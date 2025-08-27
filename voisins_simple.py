@@ -18,6 +18,8 @@ class RouletteVoisinsTracker:
     def __init__(self):
         self.voisins_numbers = {22, 18, 29, 7, 28, 12, 35, 3, 26, 0, 32, 15, 19, 4, 21, 2, 25}
         self.rounds_without_voisins = 0
+        self.rounds_with_voisins = 0
+        self.consecutive_voisins_streak = 0
         self.total_rounds = 0
         self.history = []
         
@@ -33,14 +35,19 @@ class RouletteVoisinsTracker:
         
         if self.is_voisins(number):
             self.rounds_without_voisins = 0
+            self.rounds_with_voisins += 1
+            self.consecutive_voisins_streak += 1
             return True
         else:
             self.rounds_without_voisins += 1
+            self.consecutive_voisins_streak = 0  # Reset streak when non-voisins hit
             return False
     
     def get_status(self):
         return {
             'rounds_without_voisins': self.rounds_without_voisins,
+            'rounds_with_voisins': self.rounds_with_voisins,
+            'consecutive_voisins_streak': self.consecutive_voisins_streak,
             'total_rounds': self.total_rounds,
             'last_number': self.history[-1] if self.history else None,
             'voisins_numbers': sorted(list(self.voisins_numbers)),
@@ -49,6 +56,8 @@ class RouletteVoisinsTracker:
     
     def reset(self):
         self.rounds_without_voisins = 0
+        self.rounds_with_voisins = 0
+        self.consecutive_voisins_streak = 0
         self.total_rounds = 0
         self.history = []
 
@@ -337,9 +346,13 @@ class RouletteHandler(http.server.SimpleHTTPRequestHandler):
         
         <div class="status-panel">
             <div class="rounds-counter" id="roundsCounter">Rounds without Voisins: 0</div>
+            <div class="rounds-counter" id="streakCounter" style="font-size: 2.2em; color: #2ecc71; margin-top: 10px;">Consecutive Voisins Streak: 0</div>
             <div class="stats-grid">
                 <div class="stat-item">
                     <strong>Total Rounds:</strong> <span id="totalRounds">0</span>
+                </div>
+                <div class="stat-item">
+                    <strong>Total Voisins Hits:</strong> <span id="roundsWithVoisins">0</span>
                 </div>
                 <div class="stat-item">
                     <strong>Last Number:</strong> <span id="lastNumber">-</span>
@@ -377,7 +390,16 @@ class RouletteHandler(http.server.SimpleHTTPRequestHandler):
         <div class="voisins-info">
             <h3 style="margin-top: 0;">🎯 Voisins du Zéro Numbers</h3>
             <p style="font-size: 1.2em; font-weight: bold;">0, 2, 3, 4, 7, 12, 15, 18, 19, 21, 22, 25, 26, 28, 29, 32, 35</p>
-            <p style="font-size: 0.9em; opacity: 0.8;">Track how many rounds pass without hitting any of these numbers!</p>
+            <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: left;">
+                <div style="background: rgba(231, 76, 60, 0.2); padding: 15px; border-radius: 8px; border: 1px solid rgba(231, 76, 60, 0.3);">
+                    <strong>📊 Rounds without Voisins:</strong><br>
+                    <small>Counts how many rounds pass without hitting any voisins number</small>
+                </div>
+                <div style="background: rgba(46, 204, 113, 0.2); padding: 15px; border-radius: 8px; border: 1px solid rgba(46, 204, 113, 0.3);">
+                    <strong>🔥 Consecutive Voisins Streak:</strong><br>
+                    <small>Counts how many voisins numbers hit in a row</small>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -437,10 +459,15 @@ class RouletteHandler(http.server.SimpleHTTPRequestHandler):
                     
                     if (data.is_voisins) {
                         result.className = 'result result-success';
-                        result.innerHTML = `🎯 <strong>${number}</strong> is VOISINS!<br>Counter reset to 0`;
+                        const streak = data.status.consecutive_voisins_streak;
+                        if (streak > 1) {
+                            result.innerHTML = `🎯 <strong>${number}</strong> is VOISINS!<br>🔥 Streak: ${streak} consecutive voisins! | Total hits: ${data.status.rounds_with_voisins}`;
+                        } else {
+                            result.innerHTML = `🎯 <strong>${number}</strong> is VOISINS!<br>Streak started! | Total hits: ${data.status.rounds_with_voisins}`;
+                        }
                     } else {
                         result.className = 'result result-miss';
-                        result.innerHTML = `❌ <strong>${number}</strong> is NOT voisins<br>Continue tracking...`;
+                        result.innerHTML = `❌ <strong>${number}</strong> is NOT voisins<br>Streak broken! | Rounds without voisins: ${data.status.rounds_without_voisins}`;
                     }
                     
                     updateStatus(data.status);
@@ -489,11 +516,14 @@ class RouletteHandler(http.server.SimpleHTTPRequestHandler):
         // Update status display
         function updateStatus(status) {
             const roundsCounter = document.getElementById('roundsCounter');
+            const streakCounter = document.getElementById('streakCounter');
             const rounds = status.rounds_without_voisins;
+            const streak = status.consecutive_voisins_streak;
             
             roundsCounter.textContent = `Rounds without Voisins: ${rounds}`;
+            streakCounter.textContent = `Consecutive Voisins Streak: ${streak}`;
             
-            // Color coding based on rounds
+            // Color coding based on rounds without voisins
             if (rounds === 0) {
                 roundsCounter.style.color = '#2ecc71';
                 roundsCounter.style.textShadow = '0 0 10px rgba(46, 204, 113, 0.5)';
@@ -508,7 +538,23 @@ class RouletteHandler(http.server.SimpleHTTPRequestHandler):
                 roundsCounter.style.textShadow = '0 0 10px rgba(231, 76, 60, 0.5)';
             }
             
+            // Color coding for consecutive voisins streak
+            if (streak === 0) {
+                streakCounter.style.color = '#95a5a6';
+                streakCounter.style.textShadow = '0 0 10px rgba(149, 165, 166, 0.5)';
+            } else if (streak < 3) {
+                streakCounter.style.color = '#2ecc71';
+                streakCounter.style.textShadow = '0 0 10px rgba(46, 204, 113, 0.5)';
+            } else if (streak < 5) {
+                streakCounter.style.color = '#f39c12';
+                streakCounter.style.textShadow = '0 0 10px rgba(243, 156, 18, 0.5)';
+            } else {
+                streakCounter.style.color = '#e67e22';
+                streakCounter.style.textShadow = '0 0 10px rgba(230, 126, 34, 0.5)';
+            }
+            
             document.getElementById('totalRounds').textContent = status.total_rounds;
+            document.getElementById('roundsWithVoisins').textContent = status.rounds_with_voisins || 0;
             document.getElementById('lastNumber').textContent = status.last_number || '-';
         }
         
@@ -521,7 +567,10 @@ class RouletteHandler(http.server.SimpleHTTPRequestHandler):
                 historySection.style.display = 'block';
                 historyNumbers.innerHTML = '';
                 
-                history.forEach(number => {
+                // Reverse the history array to show newest numbers first (from left)
+                const reversedHistory = [...history].reverse();
+                
+                reversedHistory.forEach(number => {
                     const span = document.createElement('span');
                     span.textContent = number;
                     span.className = 'history-number';
